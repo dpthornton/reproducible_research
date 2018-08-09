@@ -1,0 +1,157 @@
+---
+title: "The economic and health cost of adverse weather events using National Weather Service storm data"
+author: "Daniel Thornton"
+date: "05/08/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(stringr)
+library(reshape2)
+```
+
+## Synopsis
+
+This report is designed to address two questions:
+
+1. Across the United States, which types of events are most harmful with respect to population health?
+2. Across the United States, which types of events have the greatest economic consequences?
+
+The answer to these questions is based solely on an analysis and intepretation of the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database which can be downloaded in a comma-sparated format (readable using Excel) from: <https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2>. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+For further information regarding the data, see: <https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf>
+
+The report includes the R code necessary to generate the results from start to finish together with a discussion of the results.
+
+## Data Processing
+
+Data is downloaded from the remote server directly to the current working directory prior to loading into the R environment and processing. The data is processed to account for the units that damage to property and damage to crops is measured in i.e. K=thousands of dollars, M=millions of dollars and B=billions of dollars, therefore the cost is normalised to dollars.
+
+```{r echo=TRUE, cache=TRUE}
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2","storm_data.bz2")
+storm_data <- read.csv(file="storm_data.bz2")
+
+storm_data_health <- storm_data[storm_data$FATALITIES>0,c('EVTYPE','FATALITIES','INJURIES')]
+storm_data_cost <- storm_data[storm_data$FATALITIES>0,c('EVTYPE','PROPDMG','PROPDMGEXP','CROPDMG','CROPDMGEXP')]
+
+# Replace the amount to reflect the units i.e. K = 1000s of dollars, M = millions of dollars
+for (i in 1:length(storm_data_cost$PROPDMG)) {
+  
+  if (str_to_upper(storm_data_cost$PROPDMGEXP[i]) == 'K' ) {
+    storm_data_cost$PROPDMG[i] = storm_data_cost$PROPDMG[i] * 1000
+  } else if (str_to_upper(storm_data_cost$PROPDMGEXP[i]) == 'M') {
+    storm_data_cost$PROPDMG[i] = storm_data_cost$PROPDMG[i] * 1000000
+  } else if (str_to_upper(storm_data_cost$PROPDMGEXP[i]) == 'B') {
+    storm_data_cost$PROPDMG[i] = storm_data_cost$PROPDMG[i] * 1000000000
+  }
+}
+
+for (i in 1:length(storm_data_cost$CROPDMG)) {
+  
+  if (str_to_upper(storm_data_cost$CROPDMGEXP[i]) == 'K') {
+    storm_data_cost$CROPDMG[i] = storm_data_cost$CROPDMG[i] * 1000
+  } else if (str_to_upper(storm_data_cost$CROPDMGEXP[i]) == 'M') {
+    storm_data_cost$CROPDMG[i] = storm_data_cost$CROPDMG[i] * 1000000
+  } else if (str_to_upper(storm_data_cost$CROPDMGEXP[i]) == 'B') {
+    storm_data_cost$CROPDMG[i] = storm_data_cost$CROPDMG[i] * 1000000000
+  }
+}
+
+```
+
+## Results
+
+### Across the United States, which types of events are most harmful with respect to population health?
+
+There are a number of aspects to consider when answering the question. The storm data carries information on the number of deaths and the number of injuries associated with an event. We can therefore use the median and maximum injuries and/or fatalities for each event type to gain an idea of the most harmful events to population level health. Most pertinent to answering the above questions is the total historic cost obtained by summing the injuries or fatalities. The report shows a stacked a bar graph in order to see the separation between fatalities and injuries and consider these in light of the question regarding 'health'.
+
+The top 10 events with the highest maximum injuries for a single event include the following. This gives an insight to the events that are not necessarily the most frequent, but have the most destructive capacity in a single event: 
+
+```{r echo=TRUE}
+fatalities_max <- aggregate(storm_data_health$FATALITIES, by=list(storm_data_health$EVTYPE), FUN=max)
+colnames(fatalities_max) <- c('type','fatalities')
+injuries_max <- aggregate(storm_data_health$INJURIES, by=list(storm_data_health$EVTYPE), FUN=max)
+colnames(injuries_max) <- c('type','injuries')
+storm_health_max <- merge(injuries_max, fatalities_max, by.x="type",by.y="type")
+storm_health_max <- head(storm_health_max[order(storm_health_max$injuries,decreasing=TRUE),],n=10)
+storm_health_max
+```
+
+The top 10 events with the highest median injuries for a single event include the following. This gives an insight to the events that are typically the most devastating when they occur: 
+
+```{r echo=TRUE}
+fatalities_median <- aggregate(storm_data_health$FATALITIES, by=list(storm_data_health$EVTYPE), FUN=median)
+colnames(fatalities_median) <- c('type','fatalities')
+injuries_median <- aggregate(storm_data_health$INJURIES, by=list(storm_data_health$EVTYPE), FUN=median)
+colnames(injuries_median) <- c('type','injuries')
+storm_health_median <- merge(injuries_median, fatalities_median, by.x="type",by.y="type")
+storm_health_median <- head(storm_health_median[order(storm_health_median$injuries,decreasing=TRUE),],n=10)
+storm_health_median
+```
+
+Finally the most devastating events in terms of human injuries are provided by the cumulative sum of the injuries caused by the event. These are events that have amassed the most injuries, which may be due to their common frequency or single event severity.
+
+```{r echo=TRUE}
+fatalities_sum <- aggregate(storm_data_health$FATALITIES, by=list(storm_data_health$EVTYPE), FUN=sum)
+colnames(fatalities_sum) <- c('type','fatalities')
+injuries_sum <- aggregate(storm_data_health$INJURIES, by=list(storm_data_health$EVTYPE), FUN=sum)
+colnames(injuries_sum) <- c('type','injuries')
+storm_health_sum <- merge(injuries_sum, fatalities_sum, by.x="type",by.y="type")
+
+storm_health_sum <- head(storm_health_sum[order(storm_health_sum$injuries,decreasing=TRUE),],n=20)
+storm_health_sum
+
+storm_health_sum_melt <- melt(storm_health_sum,id.vars = "type") 
+ggplot(storm_health_sum_melt, aes(x = reorder(type, value), y=value, fill=variable)) + geom_col() + coord_flip() + ylab("Fatality/Injury count") + xlab("Weather event type") + ggtitle("Sum of total injuries/fatalities by weather event in the US")
+```
+
+In summary, the event with the maximum number of injuries in any single event on record was a `r paste0("'", storm_health_max[1,1],"'")` event type with a total of `r storm_health_max[1,2]` injuries. Cumulatively, the event that has amassed the most injuries is `r paste0("'", storm_health_sum[1,1],"'")` event, with a total of `r paste0("'", storm_health_sum[1,2],"'")` injuries. In terms of median injuries caused by events, the event with the highest median injuries has been the `r paste0("'", storm_health_median[1,1],"'")` event with a total of `r paste0("'", storm_health_median[1,2],"'")`. 
+
+
+### Across the United States, which types of events have the greatest economic consequences?
+
+In terms of economic cost, below considers the cost to property and the cost in damage to crops estimated from insurance data. The cumulative cost is considered by summing the damage cost in dollars for each event type, whilst the median and maximum cost of an event is also considered.
+
+The maximum event cost for is considered below, reporting the events with the highest one off maximum cost in terms of property damage
+
+```{r echo=TRUE}
+prop_max <- aggregate(storm_data_cost$PROPDMG, by=list(storm_data_cost$EVTYPE), FUN=max)
+colnames(prop_max) <- c('type','property_damage')
+crop_max <- aggregate(storm_data_cost$CROPDMG, by=list(storm_data_cost$EVTYPE), FUN=max)
+colnames(crop_max) <- c('type','crop_damage')
+storm_cost_max <- merge(prop_max, crop_max, by.x="type",by.y="type")
+storm_cost_max <- head(storm_cost_max[order(storm_cost_max$property_damage + storm_cost_max$crop_damage,decreasing=TRUE),],n=10)
+storm_cost_max
+```
+
+The top 10 events with the highest median porperty damage cost for a single event include the following. This gives an insight to the events that are typically the most devastating to property when they occur: 
+
+```{r echo=TRUE}
+prop_median <- aggregate(storm_data_cost$PROPDMG, by=list(storm_data_cost$EVTYPE), FUN=median)
+colnames(prop_median) <- c('type','property_damaage')
+crop_median <- aggregate(storm_data_cost$CROPDMG, by=list(storm_data_cost$EVTYPE), FUN=median)
+colnames(crop_median) <- c('type','crop_damaage')
+storm_cost_median <- merge(prop_median, crop_median, by.x="type",by.y="type")
+storm_cost_median <- head(storm_cost_median[order(storm_cost_median$property_damaage + storm_cost_median$crop_damaage,decreasing=TRUE),],n=10)
+storm_cost_median
+```
+
+Finally the most devastating events in terms of property damage are provided by the cumulative sum of the property damage caused by the event. These are events that have amassed the most expense in property damage, which may be due to their common frequency or single event severity.
+
+```{r echo=TRUE}
+prop_sum <- aggregate(storm_data_cost$PROPDMG, by=list(storm_data_cost$EVTYPE), FUN=sum)
+colnames(prop_sum) <- c('type','property_damage')
+crop_sum <- aggregate(storm_data_cost$CROPDMG, by=list(storm_data_cost$EVTYPE), FUN=sum)
+colnames(crop_sum) <- c('type','crop_damage')
+
+storm_cost_sum <- merge(prop_sum, crop_sum, by.x="type",by.y="type")
+storm_cost_sum <- head(storm_cost_sum[order(storm_cost_sum$property_damage + storm_cost_sum$crop_damage,decreasing=TRUE),],n=20)
+storm_cost_sum
+
+storm_cost_sum_melt <- melt(storm_cost_sum,id.vars = "type") 
+ggplot(storm_cost_sum_melt, aes(x = reorder(type, value), y=value, fill=variable)) + geom_col() + coord_flip() + ylab("Cost($)") + xlab("Weather event type") + ggtitle("US cost of property and crop damage by weather events")
+```
+
+In summary, the event that caused the highest cost in terms of property damage in a single event on record was a `r paste0("'", storm_cost_max[1,1],"'")` event type, with a total of `r storm_cost_max[1,2]` dollars of damage. Cumulatively, the event that has amassed the most cost is the `r paste0("'", storm_cost_sum[1,1],"'")` event, with a total of `r storm_cost_sum[1,2]` dollars in damage. In terms of median cost caused by events, the event with the highest median cost has been the `r paste0("'", storm_cost_median[1,1],"'")` event, with a total of `r  storm_cost_median[1,2]` typically spent in dollars following the event. 
